@@ -77,10 +77,28 @@ Find your extracted data in:
 | `census_tract` | 11-digit Census GEOID | 100% (auto-recovery) |
 | `poverty_rank` | Poverty rate percentage | 97% (auto-recovery) |
 | `quartile` | Income quartile (1-4) | 100% |
-| `tiebreaker_park` | Distance to nearest park | 93% |
-| `tiebreaker_school` | Distance to nearest school | 93% |
-| `tiebreaker_grocery` | Distance to nearest grocery | 93% |
-| `tiebreaker_library` | Distance to nearest library | 93% |
+| `property_rate` | Property tax rate | 97% |
+| `tiebreaker_park` | Name of nearest park | 93% |
+| `tiebreaker_school` | Name of nearest school | 93% |
+| `tiebreaker_grocery` | Name of nearest grocery | 93% |
+| `tiebreaker_library` | Name of nearest library | 93% |
+| `distance_to_park` | Distance to nearest park (ft/mi) | 🆕 Phase 2 |
+| `park_lat` | Park latitude (decimal degrees) | 🆕 Phase 2 |
+| `park_lng` | Park longitude (decimal degrees) | 🆕 Phase 2 |
+| `distance_to_school` | Distance to nearest school (ft/mi) | 🆕 Phase 2 |
+| `school_lat` | School latitude (decimal degrees) | 🆕 Phase 2 |
+| `school_lng` | School longitude (decimal degrees) | 🆕 Phase 2 |
+| `distance_to_grocery` | Distance to nearest grocery (ft/mi) | 🆕 Phase 2 |
+| `grocery_lat` | Grocery latitude (decimal degrees) | 🆕 Phase 2 |
+| `grocery_lng` | Grocery longitude (decimal degrees) | 🆕 Phase 2 |
+| `distance_to_library` | Distance to nearest library (ft/mi) | 🆕 Phase 2 |
+| `library_lat` | Library latitude (decimal degrees) | 🆕 Phase 2 |
+| `library_lng` | Library longitude (decimal degrees) | 🆕 Phase 2 |
+| `site_lat` | Project site latitude (decimal degrees) | 🆕 Phase 2 |
+| `site_lng` | Project site longitude (decimal degrees) | 🆕 Phase 2 |
+| `tiebreaker_score` | Aggregate tie-breaker score | 🆕 Phase 2 |
+
+**Total: 27 data columns** (12 original + 15 Phase 2 detail fields, plus 3 tracking + 2 review columns = 32 CSV columns)
 
 ---
 

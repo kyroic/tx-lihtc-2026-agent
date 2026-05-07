@@ -170,6 +170,27 @@ class ExtractedRow:
     tiebreaker_grocery: FieldEvidence = field(default_factory=FieldEvidence)
     tiebreaker_library: FieldEvidence = field(default_factory=FieldEvidence)
 
+    # Phase 2: Tie-breaker distances + coordinates
+    distance_to_park: FieldEvidence = field(default_factory=FieldEvidence)
+    park_lat: FieldEvidence = field(default_factory=FieldEvidence)
+    park_lng: FieldEvidence = field(default_factory=FieldEvidence)
+    distance_to_school: FieldEvidence = field(default_factory=FieldEvidence)
+    school_lat: FieldEvidence = field(default_factory=FieldEvidence)
+    school_lng: FieldEvidence = field(default_factory=FieldEvidence)
+    distance_to_grocery: FieldEvidence = field(default_factory=FieldEvidence)
+    grocery_lat: FieldEvidence = field(default_factory=FieldEvidence)
+    grocery_lng: FieldEvidence = field(default_factory=FieldEvidence)
+    distance_to_library: FieldEvidence = field(default_factory=FieldEvidence)
+    library_lat: FieldEvidence = field(default_factory=FieldEvidence)
+    library_lng: FieldEvidence = field(default_factory=FieldEvidence)
+
+    # Phase 2: Site coordinates
+    site_lat: FieldEvidence = field(default_factory=FieldEvidence)
+    site_lng: FieldEvidence = field(default_factory=FieldEvidence)
+
+    # Phase 2: Aggregate tie-breaker score
+    tiebreaker_score: FieldEvidence = field(default_factory=FieldEvidence)
+
     quartile: FieldEvidence = field(default_factory=FieldEvidence)
     property_rate: FieldEvidence = field(default_factory=FieldEvidence)
     poverty_rank: FieldEvidence = field(default_factory=FieldEvidence)
@@ -188,6 +209,23 @@ _EVIDENCE_KEYS = (
     "tiebreaker_school",
     "tiebreaker_grocery",
     "tiebreaker_library",
+    # Phase 2: distances + coords
+    "distance_to_park",
+    "park_lat",
+    "park_lng",
+    "distance_to_school",
+    "school_lat",
+    "school_lng",
+    "distance_to_grocery",
+    "grocery_lat",
+    "grocery_lng",
+    "distance_to_library",
+    "library_lat",
+    "library_lng",
+    # Phase 2: site + aggregate
+    "site_lat",
+    "site_lng",
+    "tiebreaker_score",
     "quartile",
     "property_rate",
     "poverty_rank",
@@ -294,6 +332,19 @@ def extract_one_pdf(*, project_id: str, model: str, pdf_path: Path, max_pages: i
         f = getattr(row, k)
         if f.value and (not f.pages or not f.quote.strip()):
             row.review_reasons.append(f"missing_evidence:{k}")
+    # Phase 2: flag incomplete coordinate pairs (one present but not the other)
+    coord_pairs = [
+        ("site_lat", "site_lng"),
+        ("park_lat", "park_lng"),
+        ("school_lat", "school_lng"),
+        ("grocery_lat", "grocery_lng"),
+        ("library_lat", "library_lng"),
+    ]
+    for lat_k, lng_k in coord_pairs:
+        lat_v = getattr(row, lat_k).value.strip() if getattr(row, lat_k).value else ""
+        lng_v = getattr(row, lng_k).value.strip() if getattr(row, lng_k).value else ""
+        if (lat_v and not lng_v) or (lng_v and not lat_v):
+            row.review_reasons.append(f"incomplete_coords:{lat_k}/{lng_k}")
     row.needs_review = bool(row.review_reasons)
     return row
 
@@ -311,6 +362,21 @@ def csv_fieldnames() -> list[str]:
         "tiebreaker_school",
         "tiebreaker_grocery",
         "tiebreaker_library",
+        "distance_to_park",
+        "park_lat",
+        "park_lng",
+        "distance_to_school",
+        "school_lat",
+        "school_lng",
+        "distance_to_grocery",
+        "grocery_lat",
+        "grocery_lng",
+        "distance_to_library",
+        "library_lat",
+        "library_lng",
+        "site_lat",
+        "site_lng",
+        "tiebreaker_score",
         "quartile",
         "property_rate",
         "poverty_rank",
@@ -367,7 +433,24 @@ def flatten_csv(row: ExtractedRow) -> dict[str, str]:
         "tiebreaker_school": v(row.tiebreaker_school),
         "tiebreaker_grocery": v(row.tiebreaker_grocery),
         "tiebreaker_library": v(row.tiebreaker_library),
-        "quartile": v(row.quartile),
+        # Phase 2: tie-breaker distances + coordinates
+    "distance_to_park": v(row.distance_to_park),
+    "park_lat": v(row.park_lat),
+    "park_lng": v(row.park_lng),
+    "distance_to_school": v(row.distance_to_school),
+    "school_lat": v(row.school_lat),
+    "school_lng": v(row.school_lng),
+    "distance_to_grocery": v(row.distance_to_grocery),
+    "grocery_lat": v(row.grocery_lat),
+    "grocery_lng": v(row.grocery_lng),
+    "distance_to_library": v(row.distance_to_library),
+    "library_lat": v(row.library_lat),
+    "library_lng": v(row.library_lng),
+    # Phase 2: site coords + aggregate
+    "site_lat": v(row.site_lat),
+    "site_lng": v(row.site_lng),
+    "tiebreaker_score": v(row.tiebreaker_score),
+    "quartile": v(row.quartile),
         "property_rate": v(row.property_rate),
         "poverty_rank": v(row.poverty_rank),
         "census_tract": v(row.census_tract),

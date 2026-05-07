@@ -47,6 +47,12 @@ TIEBREAKER_HEADING_PATTERNS = [
     r'tie[- ]?breakers?',
 ]
 
+# Phase 2: coordinate auto-recovery (lat/lng in decimal degrees)
+COORD_PATTERNS = [
+    r'(?:latitude|lat)[:\s]+(-?\d{1,2}\.\d{4,})',
+    r'(?:longitude|lng|long)[:\s]+(-?\d{1,3}\.\d{4,})',
+]
+
 
 def extract_text_with_pdftotext(pdf_path: Path, first_page: int = 1, last_page: int = -1) -> str:
     with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as tmp:
@@ -146,7 +152,25 @@ def extract_one_pdf_final(pdf_path: Path, project_id: str, model: str) -> Extrac
                     "pages": [1],
                     "quote": f"Auto-recovered: {poverty_rate}",
                 })
-        
+
+        # Phase 2: coordinate auto-recovery from tiebreaker pages
+        tb_text = extract_text_with_pdftotext(pdf_path)
+        if tb_text:
+            # Try to fill missing site coords
+            if not row.site_lat.value or not row.site_lng.value:
+                site_lat_match = re.search(r'(?:site|project|development)\s*(?:latitude|lat)[:\s]+(-?\d{1,2}\.\d{4,})', tb_text, re.IGNORECASE)
+                site_lng_match = re.search(r'(?:site|project|development)\s*(?:longitude|lng|long)[:\s]+(-?\d{1,3}\.\d{4,})', tb_text, re.IGNORECASE)
+                if site_lat_match and not row.site_lat.value:
+                    row.site_lat = field_from_obj({"value": site_lat_match.group(1), "confidence": 0.85, "pages": [1], "quote": f"Auto-recovered: {site_lat_match.group(1)}"})
+                if site_lng_match and not row.site_lng.value:
+                    row.site_lng = field_from_obj({"value": site_lng_match.group(1), "confidence": 0.85, "pages": [1], "quote": f"Auto-recovered: {site_lng_match.group(1)}"})
+
+            # Try to recover tiebreaker_score
+            if not row.tiebreaker_score.value:
+                score_match = re.search(r'(?:total|aggregate|overall)\s*(?:tie[- ]?breaker\s*)?(?:score|points)[:\s]+([0-9,.]+)', tb_text, re.IGNORECASE)
+                if score_match:
+                    row.tiebreaker_score = field_from_obj({"value": score_match.group(1).replace(",", ""), "confidence": 0.85, "pages": [1], "quote": f"Auto-recovered: {score_match.group(1)}"})
+
         return row
     except Exception as e:
         # Fallback empty row
@@ -158,57 +182,6 @@ def extract_one_pdf_final(pdf_path: Path, project_id: str, model: str) -> Extrac
         row.review_reasons.append(f"extraction_error:{str(e)[:50]}")
         row.needs_review = True
         return row
-    
-    try:
-        resp = chat_completions(
-            project_id=project_id,
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": json.dumps(user_data, ensure_ascii=False)},
-            ],
-            temperature=0.0,
-        )
-        out = extract_json_content(resp)
-    except Exception:
-        out = {}
-    
-    row = ExtractedRow(
-        source_pdf_path=str(pdf_path),
-        source_pdf_sha256=sha256_file(pdf_path),
-        extraction_version="complete_pipeline",
-    )
-    
-    for k in schema.keys():
-        setattr(row, k, field_from_obj(out.get(k)))
-    
-    # Apply auto-recovery
-    if census_tract and not row.census_tract.value:
-        row.census_tract = field_from_obj({
-            "value": census_tract,
-            "confidence": 0.95,
-            "pages": [1],
-            "quote": f"Auto-recovered: {census_tract}",
-        })
-    
-    if poverty_rate and not row.poverty_rank.value:
-        row.poverty_rank = field_from_obj({
-            "value": poverty_rate,
-            "confidence": 0.95,
-            "pages": [1],
-            "quote": f"Auto-recovered: {poverty_rate}",
-        })
-    
-    # Validation
-    if not row.application_name.value:
-        row.review_reasons.append("missing:application_name")
-    if not row.contact_email.value:
-        row.review_reasons.append("missing:contact_email")
-    if not row.census_tract.value:
-        row.review_reasons.append("missing:census_tract")
-    
-    row.needs_review = bool(row.review_reasons)
-    return row
 
 
 def main() -> int:
