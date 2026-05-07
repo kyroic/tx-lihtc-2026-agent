@@ -112,46 +112,52 @@ def extract_one_pdf_final(pdf_path: Path, project_id: str, model: str) -> Extrac
     """Extract one PDF with auto-recovery."""
     from ..extract import field_from_obj, norm_ws
     
-    tiebreaker_pages = find_tiebreaker_pages(pdf_path)
+    # Use V5.8 strategy which already works
+    strat = get_strategy("v5_8_fast_tiebreaker")
     
-    # Auto-recovery
-    census_tract = find_census_tract(pdf_path)
-    poverty_rate = find_poverty_rate(pdf_path)
-    
-    # Build prompt
-    system = (
-        "You are an extraction agent for Texas LIHTC 2026 Full Application PDFs.\n"
-        "Return ONLY valid JSON (no markdown).\n"
-        "Rules:\n"
-        "- Never invent values. If not present, return value=\"\" and confidence=0.\n"
-        "- Every non-empty value MUST include pages[] and a short quote.\n"
-        "- CRITICAL: Focus on tiebreaker_pages for tiebreaker_* fields.\n"
-    )
-    
-    schema = {
-        "application_name": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "contact_name": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "contact_email": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "contact_phone": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "tiebreaker_park": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "tiebreaker_school": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "tiebreaker_grocery": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "tiebreaker_library": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "quartile": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "property_rate": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "poverty_rank": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-        "census_tract": {"value": "", "confidence": 0.0, "pages": [], "quote": ""},
-    }
-    
-    user_data = {
-        "pdf_filename": pdf_path.name,
-        "tiebreaker_pages": tiebreaker_pages,
-        "auto_recovered": {
-            "census_tract": census_tract,
-            "poverty_rate": poverty_rate,
-        },
-        "output_schema": schema,
-    }
+    try:
+        result = strat.extract(
+            project_id=project_id,
+            model=model,
+            pdf_path=pdf_path,
+            max_pages=50,
+        )
+        row = result.row
+        row.source_pdf_sha256 = sha256_file(pdf_path)
+        row.extraction_version = "complete_pipeline"
+        
+        # Additional auto-recovery if LLM missed something
+        if not row.census_tract.value:
+            census_tract = find_census_tract(pdf_path)
+            if census_tract:
+                row.census_tract = field_from_obj({
+                    "value": census_tract,
+                    "confidence": 0.95,
+                    "pages": [1],
+                    "quote": f"Auto-recovered: {census_tract}",
+                })
+        
+        if not row.poverty_rank.value:
+            poverty_rate = find_poverty_rate(pdf_path)
+            if poverty_rate:
+                row.poverty_rank = field_from_obj({
+                    "value": poverty_rate,
+                    "confidence": 0.95,
+                    "pages": [1],
+                    "quote": f"Auto-recovered: {poverty_rate}",
+                })
+        
+        return row
+    except Exception as e:
+        # Fallback empty row
+        row = ExtractedRow(
+            source_pdf_path=str(pdf_path),
+            source_pdf_sha256=sha256_file(pdf_path),
+            extraction_version="complete_pipeline",
+        )
+        row.review_reasons.append(f"extraction_error:{str(e)[:50]}")
+        row.needs_review = True
+        return row
     
     try:
         resp = chat_completions(
@@ -209,8 +215,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Complete End-to-End Pipeline (discover → download → extract)"
     )
-    ap.add_argument("--pdf-dir", default="out_v5_6_full/downloads", help="PDF directory")
-    ap.add_argument("--out-dir", default="out_complete", help="Output directory")
+    ap.add_argument("--pdf-dir", default="downloads", help="PDF directory (default: downloads)")
+    ap.add_argument("--out-dir", default="out", help="Output directory (default: out)")
     ap.add_argument("--project-id", default="lihtc-tx-2026")
     ap.add_argument("--model", default="gpt-4o-mini")
     ap.add_argument("--parallel", type=int, default=4)

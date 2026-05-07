@@ -301,8 +301,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Final Unified Pipeline - V5.8 + Auto-Recovery (no mode selection needed)"
     )
-    ap.add_argument("--pdf-dir", required=True, help="Directory with PDFs")
-    ap.add_argument("--out-dir", required=True, help="Output directory")
+    ap.add_argument("--pdf-dir", default="downloads", help="Directory with PDFs (default: downloads)")
+    ap.add_argument("--out-dir", default="out", help="Output directory (default: out)")
     ap.add_argument("--project-id", default="lihtc-tx-2026")
     ap.add_argument("--model", default="gpt-4o-mini")
     ap.add_argument("--parallel", type=int, default=4, help="Parallel PDFs")
