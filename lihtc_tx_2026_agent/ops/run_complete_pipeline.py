@@ -221,6 +221,9 @@ def main() -> int:
     ap.add_argument("--model", default="gpt-4o-mini")
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--skip-discover", action="store_true", help="Skip discovery if PDFs exist")
+    ap.add_argument("--source-folder", default="2026-9-challenges", help="Folder under /imaged/ to target (default: 2026-9-challenges)")
+    ap.add_argument("--download-parallel", type=int, default=10)
+    ap.add_argument("--max-download-bytes", type=int, default=500_000_000, help="Per-PDF max bytes (default 500MB)")
     args = ap.parse_args()
     
     out_root = Path(args.out_dir).expanduser().resolve()
@@ -228,6 +231,8 @@ def main() -> int:
     
     pdf_dir = Path(args.pdf_dir).expanduser().resolve()
     
+    selected_urls: list[str] = []
+
     # Step 1: Discover (if needed)
     if not args.skip_discover or not pdf_dir.exists() or len(list(pdf_dir.glob("*.pdf"))) == 0:
         print("🔍 Step 1: Discovering PDFs from TDHCA...")
@@ -238,21 +243,28 @@ def main() -> int:
             include_pdf_regex="2026",
             fetch_timeout_s=15,
         )
-        print(f"  Found {len(disc.pdf_urls)} PDF URLs")
+        all_urls = list(disc.pdf_urls)
+        selected_urls = [u for u in all_urls if f"/imaged/{args.source_folder}/" in u]
+        print(f"  Found {len(all_urls)} PDF URLs total")
+        print(f"  Selected {len(selected_urls)} from folder: {args.source_folder}")
         pdf_dir = out_root / "downloads"
-    
+
     # Step 2: Download
     print(f"\n📥 Step 2: Downloading PDFs to {pdf_dir}...")
     pdfs = list(pdf_dir.glob("*.pdf")) if pdf_dir.exists() else []
-    if len(pdfs) < 100:
+    if selected_urls:
         dl = download_pdfs(
-            pdf_urls=[],  # Will load from discover_state
+            pdf_urls=selected_urls,
             out_dir=pdf_dir,
             manifest_path=out_root / "download_manifest.json",
-            max_new_downloads=200,
-            parallel_downloads=10,
+            max_new_downloads=len(selected_urls),
+            parallel_downloads=int(args.download_parallel),
+            max_bytes=int(args.max_download_bytes),
+            timeout_s=120,
         )
-        print(f"  Downloaded: {dl.downloaded}, Skipped: {dl.skipped_existing}")
+        print(f"  Downloaded: {dl.downloaded}, Skipped: {dl.skipped_existing}, Failed: {dl.failed}")
+    else:
+        print("  Using existing PDFs in --pdf-dir (skip discovery/download)")
     
     # Step 3: Extract
     print(f"\n📊 Step 3: Extracting data with auto-recovery...")
@@ -293,6 +305,8 @@ def main() -> int:
     
     run_summary = {
         "mode": "complete_end_to_end_pipeline",
+        "source_folder": args.source_folder,
+        "selected_url_count": len(selected_urls),
         "total_pdfs": len(pdfs),
         "extracted_rows": len(extracted_rows),
         "count_needs_review": summary["count_needs_review"],

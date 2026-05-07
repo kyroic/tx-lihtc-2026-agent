@@ -1,0 +1,34 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Secrets
+.env
+*.env
+.openclaw/
+
+# Local runtime data / outputs
+out*/
+downloads*/
+independent_*/
+memory/
+logs/
+*.log
+
+# Workspace-local assistant files
+AGENTS.md
+BOOTSTRAP.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
