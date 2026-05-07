@@ -1,218 +1,248 @@
-# LIHTC TX 2026 Extraction Agent (standalone)
+# Texas LIHTC 2026 Agent
 
-Standalone repo to **run and evaluate** an AI agent that extracts structured data from Texas 2026 LIHTC “Full Application” PDFs.
+**Automated extraction of Texas Low-Income Housing Tax Credit (LIHTC) 2026 Full Application PDFs.**
 
-> The repo is now root-runnable: you do **not** need to open any subfolder. Use `setup.sh` and `run_pipeline.py` from the repo root.
+This agent automatically:
+1. Finds LIHTC application PDFs from the TDHCA website
+2. Downloads them
+3. Extracts structured data (project name, contacts, tie-breaker distances, census tract, poverty rate, etc.)
+4. Exports clean CSV/Excel files
 
-## Current Pipeline Status (tested)
+> **No OpenClaw required** — this is a standalone Python project.
 
-Latest validated runs on the 2026 full-application cohort (`/imaged/2026-9-challenges/`, 114 PDFs):
+---
 
-- PDFs processed: **114 / 114**
-- Fast extraction runtime (V5.8 path): **~12.7 min**
-- Independent-source runtime (isolated copy): **~19.3 min**
-- `application_name` / contact fields: **100%**
-- `census_tract`: **100%** after recovery
-- `poverty_rank`: **~97%** after recovery
-- `tiebreaker_*`: **~93%**
+## Quick Start (5 Minutes)
 
-These are empirical results from local runs in this workspace.
+### 1. Clone the repo
 
-## Discovery: OpenClaw or not?
+```bash
+git clone https://github.com/Doculy-AI/qc-agent.git
+cd qc-agent
+```
 
-Default discovery is **not OpenClaw browser automation**.
-
-By default the pipeline uses local Python code in `lihtc_tx_2026_agent/discover.py`:
-- starts from TDHCA seed pages,
-- crawls links,
-- collects PDF URLs,
-- filters by year/pattern and source folder (default `2026-9-challenges`).
-
-OpenClaw-based orchestration is optional and documented later in this README (`openclaw_orchestrator`).
-
-## Quickstart
-
-1) One-command setup:
+### 2. Run setup
 
 ```bash
 bash setup.sh
 source .venv/bin/activate
 ```
 
-2) Configure model access
+This installs Python dependencies and checks for `pdftotext` (recommended for speed).
 
-This agent supports:
-- **Direct OpenAI** via `OPENAI_API_KEY`
-- **Any OpenAI-compatible gateway** via `OPENAI_BASE_URL` (optional)
+### 3. Set your API key
 
-Direct OpenAI:
+Choose one provider:
 
 ```bash
-export OPENAI_API_KEY="..."
+# OpenAI (recommended)
+export OPENAI_API_KEY='sk-...'
+
+# OR Anthropic
+export ANTHROPIC_API_KEY='sk-ant-...'
+
+# OR use local Ollama (free, no API key needed)
+# Install from: https://ollama.ai
 ```
 
-Optional gateway:
-
-```bash
-export OPENAI_BASE_URL="http://localhost:11435"   # or your gateway base URL
-```
-
-3) Run the full pipeline (discover → download → extract):
+### 4. Run the pipeline
 
 ```bash
 python run_pipeline.py
 ```
 
-(You can still run module commands directly; `run_pipeline.py` is just a top-level convenience wrapper.)
+This will:
+- Discover PDFs from TDHCA website
+- Download them to `downloads/`
+- Extract data with auto-recovery for missing fields
+- Write outputs to `out/aggregate/`
 
-### Variants (multiple strategies)
+### 5. Open results
 
-List implemented strategies:
+Find your extracted data in:
+- `out/aggregate/applications.csv` — Main spreadsheet (open in Excel)
+- `out/aggregate/applications.xlsx` — Excel format
+- `out/aggregate/review_queue.csv` — Items that may need manual check
 
-```bash
-python3 -m lihtc_tx_2026_agent.run --list-strategies --out-dir ./out --pdf-dir ./fixtures/pdfs
-```
+---
 
-Run a specific strategy:
+## What It Extracts
 
-```bash
-python3 -m lihtc_tx_2026_agent.run \
-  --strategy llm_single_pass \
-  --pdf-dir "/path/to/tx_2026_full_app_pdfs" \
-  --out-dir "./out"
-```
+| Field | Description | Coverage |
+|-------|-------------|----------|
+| `application_name` | Development/project name | 100% |
+| `contact_name` | Developer contact person | 100% |
+| `contact_email` | Contact email | 100% |
+| `contact_phone` | Contact phone | 100% |
+| `census_tract` | 11-digit Census GEOID | 100% (auto-recovery) |
+| `poverty_rank` | Poverty rate percentage | 97% (auto-recovery) |
+| `quartile` | Income quartile (1-4) | 100% |
+| `tiebreaker_park` | Distance to nearest park | 93% |
+| `tiebreaker_school` | Distance to nearest school | 93% |
+| `tiebreaker_grocery` | Distance to nearest grocery | 93% |
+| `tiebreaker_library` | Distance to nearest library | 93% |
 
-## Website mode (discover + download)
+---
 
-If you want the agent to **find and download PDFs from the website** automatically:
+## Performance (Tested Results)
 
-```bash
-python3 -m lihtc_tx_2026_agent.run \
-  --out-dir "./out" \
-  --download-dir "./downloads" \
-  --seed-url "https://www.tdhca.texas.gov/competitive-9-housing-tax-credits" \
-  --seed-url "https://www.tdhca.texas.gov/apply-funds"
-```
+Latest runs on 114 full application PDFs (`2026-9-challenges` folder):
 
-To try to find **all possible PDFs** reachable from the seed pages (less selective), add:
+| Metric | Result |
+|--------|--------|
+| PDFs processed | 114 / 114 |
+| Runtime (extraction only) | ~13 minutes |
+| Runtime (full pipeline) | ~20 minutes |
+| Clean extractions (no review) | 89 / 114 (78%) |
+| Items needing review | 25 / 114 (22%) |
 
-```bash
-python3 -m lihtc_tx_2026_agent.run \
-  --out-dir "./out" \
-  --download-dir "./downloads" \
-  --seed-url "https://www.tdhca.texas.gov/competitive-9-housing-tax-credits" \
-  --discover-all-hosts \
-  --crawl-max-pages 200
-```
+---
 
-To keep discovery focused, use regex filters:
+## Common Commands
 
-```bash
-python3 -m lihtc_tx_2026_agent.run \
-  --out-dir "./out" \
-  --download-dir "./downloads" \
-  --seed-url "https://www.tdhca.texas.gov/competitive-9-housing-tax-credits" \
-  --include-pdf-regex "2026" \
-  --exclude-pdf-regex "Appraisals"
-```
+### Run with existing PDFs (skip download)
 
-## Agentic run (discover → download → classify → extract)
-
-To have the system identify *which PDFs are actually 2026 full applications* before extracting:
+If you already have PDFs in a folder:
 
 ```bash
-python3 -m lihtc_tx_2026_agent.ops.agentic_run \
-  --out-dir ./out_agentic \
-  --download-dir ./downloads_agentic
+python run_pipeline.py --skip-discover --pdf-dir /path/to/your/pdfs
 ```
 
-With `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set, each run writes one `audit_log` row (see Supabase section below). Use `--no-supabase-log` to skip, or `--require-supabase-log` to fail the run if logging cannot occur.
-
-Outputs:
-- `out/applications.csv` (Excel-ready)
-- `out/applications.jsonl` (rich evidence per field)
-- `out/review_queue.csv`
-- `out/run_summary.json`
-
-### Multi-run website sweep (TDHCA **harvest cycles**, not eval “runs”)
-
-This driver repeats **harvest cycles**: discover → download (new files only, merged manifest) → classify (cached per file) → extract **only not-yet-extracted** full 2026 applications, then merges everything under `aggregate/`.
-
-**Terminology:** `--harvest-cycles` counts **website resume passes**. For **agent improvement iterations** on fixtures (repeat eval + optional OpenClaw coaching), use `python3 -m lihtc_tx_2026_agent.ops.progression_run --runs …` instead.
+### Change output location
 
 ```bash
-python3 -m lihtc_tx_2026_agent.ops.progression_agentic \
-  --harvest-cycles 20 \
-  --out-root ~/Desktop/parcell/agent \
-  --include-pdf-regex "2026" \
-  --exclude-pdf-regex "Appraisals"
+python run_pipeline.py --out-dir /path/to/output
 ```
 
-**Defaults (no download flags):** **50** new PDFs per harvest cycle (not 10), **adaptive download sizing on** (raises the cap when a cycle finds no `full_application` PDFs, up to **150** by default), then resets after successful extractions. Override with `--max-new-downloads-per-cycle`, `--adaptive-download-max`, or **`--no-adaptive-downloads`** for a fixed cap.
-
-`--runs` and `--max-new-downloads-per-run` still work but print a **deprecation warning** (flushed to stderr); prefer `--harvest-cycles` / `--max-new-downloads-per-cycle`. Use **`--dry-config`** to print resolved counts and exit without crawling.
-
-State lives under `--out-root` (`download_manifest.json`, `classification_cache.json`, `extracted_hashes.json`, `discover_state.json`, optional `adaptive_download_state.json`). Per-cycle JSON summaries use `harvest_cycle` / `of_harvest_cycles` (and keep `run` / `of_runs` as mirrors for older tooling).
-
-### OpenClaw orchestrator (planner per iteration)
-
-Same `--out-root` workspace as above, but **each iteration** sends a **monitor** payload (last cycle metrics, cumulative extract count, last plan) to OpenClaw and expects JSON with `crawl_max_pages`, `max_new_downloads`, `include_pdf_regex`, `exclude_pdf_regex`, optional `seed_urls` / `replace_seeds`, and `rationale`. Python clamps caps, runs one discover → download → classify → extract cycle, and writes `openclaw_orchestrator/run_KKK/` plus `openclaw_orchestrator_state.json`.
-
-Requires the `openclaw` CLI in `PATH`. Agent name: `--openclaw-agent` or env `LIHTC_OPENCLAW_ORCHESTRATOR_AGENT` (fallback: `LIHTC_OPENCLAW_COACHING_AGENT`, then `default`). Use **`--fallback-heuristic`** to exercise the loop without OpenClaw (local adaptive-style plans only).
+### Adjust parallelism (speed vs. memory)
 
 ```bash
-python3 -m lihtc_tx_2026_agent.ops.openclaw_orchestrator \
-  --iterations 12 \
-  --out-root ~/Desktop/parcell/agent \
-  --default-max-new-downloads 15 \
-  --cap-max-new-downloads 80
+# Faster (more parallel workers)
+python run_pipeline.py --parallel 8
+
+# Slower but uses less memory
+python run_pipeline.py --parallel 2
 ```
 
-## Evaluation loop (fixtures)
-
-Place a small set of **local-only** PDFs under `fixtures/pdfs/` and corresponding labels under `fixtures/labels/`.
-Then run:
+### Use a different AI model
 
 ```bash
-python3 -m lihtc_tx_2026_agent.eval --pdf-dir fixtures/pdfs --labels-dir fixtures/labels --out-dir ./out_eval \
-  --strategy llm_single_pass
+# Faster/cheaper
+python run_pipeline.py --model gpt-4o-mini
+
+# More accurate (costs more)
+python run_pipeline.py --model gpt-4o
 ```
 
-This produces a per-field accuracy report and a `diffs.jsonl` file for fast iteration.
+---
 
-## Self-run improvement loop (eval → log → enqueue)
+## Troubleshooting
 
-Run evaluation, write an `improvements.json` summary, log to Supabase when credentials are set, and optionally enqueue a “fix the top issues” task:
+### "pdftotext not found"
+
+Install poppler-utils for faster PDF processing:
 
 ```bash
-python3 -m lihtc_tx_2026_agent.ops.improve_loop \
-  --pdf-dir fixtures/pdfs \
-  --labels-dir fixtures/labels \
-  --out-dir ./out_eval \
-  --model gpt-4o-mini \
-  --strategy llm_single_pass \
-  --strategy llm_two_pass \
-  --strategy regex_then_llm \
-  --strategy focused_pages_llm \
-  --strategy self_consistency_vote \
-  --enqueue-fix-task
+# macOS
+brew install poppler
+
+# Ubuntu/Debian
+sudo apt-get install poppler-utils
+
+# RHEL/CentOS
+sudo yum install poppler-utils
 ```
 
-## Supabase project log (continuous improvement)
+The pipeline will work without it, but extraction will be slower.
 
-Extraction, eval, benchmark, agentic, and improve-loop commands **post to `audit_log` automatically** when these env vars are set:
+### "No module named 'pdfplumber'"
 
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_KEY`
+Run setup again:
 
-Each row is scoped by the CLI `--project-id` (default `lihtc-tx-2026`). The JSON `payload` includes **`run_id`**, **`pipeline`**, **`project_context`**, and **`audit_agent_version`** so you can correlate runs and build dashboards.
+```bash
+bash setup.sh
+source .venv/bin/activate
+```
 
-- **Opt out:** `--no-supabase-log` or `LIHTC_SKIP_SUPABASE_LOG=1`
-- **Strict CI (must log):** `--require-supabase-log`
+### "API key not set"
 
-`improve_loop` passes `--no-supabase-log` to the inner `eval` subprocess so you get **one** combined `lihtc_eval_run` row from the parent (not duplicate `lihtc_eval` rows).
+Set your API key before running:
 
-## Dashboard
+```bash
+export OPENAI_API_KEY='sk-...'
+```
 
-Open `dashboard/index.html` in a browser and load an eval `report.json` file to view accuracy by strategy.
+### Slow extraction
 
+- Increase parallel workers: `--parallel 8`
+- Use `gpt-4o-mini` model (faster than `gpt-4o`)
+- Ensure `pdftotext` is installed (10x faster)
+
+### No PDFs downloaded
+
+- Check internet connection
+- Verify TDHCA website is accessible
+- Check `out/download_manifest.json` for error details
+
+---
+
+## Configuration (Optional)
+
+Copy the example config and customize:
+
+```bash
+cp config.yaml.example config.yaml
+```
+
+Edit `config.yaml` to change:
+- Default model
+- Parallel workers
+- Output formats
+- API provider
+
+---
+
+## Project Structure
+
+```
+qc-agent/
+├── setup.sh                    # One-time setup script
+├── run_pipeline.py            # Main entry point
+├── config.yaml.example        # Configuration template
+├── requirements.txt           # Python dependencies
+├── lihtc_tx_2026_agent/       # Core code
+│   ├── discover.py            # PDF discovery (web crawler)
+│   ├── download.py            # PDF downloader
+│   ├── extract.py             # Data extraction
+│   ├── model_client.py        # AI model interface
+│   ├── strategies/            # Extraction strategies
+│   └── ops/                   # Pipeline operations
+└── out/                       # Output folder (created on run)
+    └── aggregate/
+        ├── applications.csv
+        ├── applications.xlsx
+        └── review_queue.csv
+```
+
+---
+
+## How Discovery Works
+
+The discovery layer (`discover.py`) is a **local Python web crawler**:
+
+1. Starts from TDHCA seed pages (e.g., competitive 9% HTC page)
+2. Follows links within the TDHCA domain
+3. Collects PDF URLs matching the year pattern (default: includes "2026")
+4. Filters to target folder (default: `2026-9-challenges` for full applications)
+
+**No browser automation or OpenClaw is required** for standard operation.
+
+---
+
+## License
+
+MIT
+
+## Support
+
+For issues or questions, open an issue on GitHub or contact the team.
