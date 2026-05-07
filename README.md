@@ -2,14 +2,15 @@
 
 Standalone repo to **run and evaluate** an AI agent that extracts structured data from Texas 2026 LIHTC “Full Application” PDFs.
 
+> The repo is now root-runnable: you do **not** need to open any subfolder. Use `setup.sh` and `run_pipeline.py` from the repo root.
+
 ## Quickstart
 
-1) Create a virtualenv and install deps:
+1) One-command setup:
 
 ```bash
-python3 -m venv .venv
+bash setup.sh
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
 
 2) Configure model access
@@ -30,13 +31,13 @@ Optional gateway:
 export OPENAI_BASE_URL="http://localhost:11435"   # or your gateway base URL
 ```
 
-3) Run the agent:
+3) Run the full pipeline (discover → download → extract):
 
 ```bash
-python3 -m lihtc_tx_2026_agent.run \
-  --pdf-dir "/path/to/tx_2026_full_app_pdfs" \
-  --out-dir "./out"
+python run_pipeline.py
 ```
+
+(You can still run module commands directly; `run_pipeline.py` is just a top-level convenience wrapper.)
 
 ### Variants (multiple strategies)
 
