@@ -12,6 +12,8 @@ from .openclaw_two_stage import OpenClawTwoStageStrategy
 from .openclaw_checklist import OpenClawChecklistStrategy
 from .openclaw_self_consistency import OpenClawSelfConsistencyStrategy
 from .v5_5_chunked_tiebreaker import V5_5ChunkedTieBreakerStrategy
+from .v5_7_targeted_tiebreaker import V5_7TargetedTieBreakerStrategy
+from .v5_8_fast_tiebreaker import V5_8FastTieBreakerStrategy
 
 
 def get_strategy(name: str) -> ExtractStrategy:
@@ -38,6 +40,10 @@ def get_strategy(name: str) -> ExtractStrategy:
         return OpenClawSelfConsistencyStrategy()
     if n in ("v5_5_chunked_tiebreaker", "v5.5", "v5_5", "chunked_tiebreaker", "tiebreaker"):
         return V5_5ChunkedTieBreakerStrategy()
+    if n in ("v5_7_targeted_tiebreaker", "v5.7", "v5_7", "targeted_tiebreaker", "targeted"):
+        return V5_7TargetedTieBreakerStrategy()
+    if n in ("v5_8_fast_tiebreaker", "v5.8", "v5_8", "fast_tiebreaker", "fast"):
+        return V5_8FastTieBreakerStrategy()
     raise ValueError(f"Unknown strategy: {name!r}")
 
 
@@ -54,5 +60,7 @@ def list_strategies() -> list[str]:
         "openclaw_checklist",
         "openclaw_self_consistency",
         "v5_5_chunked_tiebreaker",
+        "v5_7_targeted_tiebreaker",
+        "v5_8_fast_tiebreaker",
     ]
 
