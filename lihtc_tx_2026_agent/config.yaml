@@ -1,0 +1,71 @@
+# Texas LIHTC 2026 Agent - Configuration
+# Copy this file to your workspace and customize as needed
+
+# Pipeline Settings
+pipeline:
+  name: "Texas LIHTC 2026 Extraction"
+  version: "v5.8"
+  
+# TDHCA Source URLs
+discovery:
+  seed_urls:
+    - "https://www.tdhca.texas.gov/competitive-9-housing-tax-credits"
+  max_pages: 550
+  include_pdf_regex: "2026"
+  fetch_timeout_s: 15
+
+# Download Settings
+download:
+  parallel_workers: 10
+  max_new_downloads: 200
+  timeout_s: 120
+
+# Extraction Settings
+extraction:
+  model: "gpt-4o-mini"  # or "claude-sonnet-4-20250514", "o3-mini", etc.
+  parallel_workers: 4
+  max_pages_per_pdf: 50
+  
+# Auto-Recovery Settings (enabled by default)
+auto_recovery:
+  census_tract: true
+  poverty_rate: true
+  tiebreaker_fields: true
+
+# Output Settings
+output:
+  formats:
+    - csv
+    - xlsx
+    - jsonl
+  include_review_queue: true
+
+# API Configuration (choose ONE provider)
+api:
+  # OpenAI
+  provider: "openai"  # or "anthropic", "ollama", "openclaw"
+  openai:
+    api_key_env: "OPENAI_API_KEY"
+    model: "gpt-4o-mini"
+  
+  # Anthropic (alternative)
+  anthropic:
+    api_key_env: "ANTHROPIC_API_KEY"
+    model: "claude-sonnet-4-20250514"
+  
+  # Ollama (local, no API key needed)
+  ollama:
+    host: "http://localhost:11434"
+    model: "qwen2.5:7b"
+  
+  # OpenClaw (if using OpenClaw runtime)
+  openclaw:
+    project_id: "lihtc-tx-2026"
+    model: "gpt-4o-mini"
+
+# Advanced Settings
+advanced:
+  temp_dir: "/tmp"
+  log_level: "INFO"
+  retry_attempts: 3
+  pdf_cache_enabled: true
