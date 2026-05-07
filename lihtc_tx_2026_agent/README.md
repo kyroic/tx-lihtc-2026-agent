@@ -47,7 +47,7 @@ python3 -m lihtc_tx_2026_agent.ops.run_complete_pipeline \
 # Or just extract (skip discovery/download)
 python3 -m lihtc_tx_2026_agent.ops.run_complete_pipeline \
   --skip-discover \
-  --pdf-dir out_v5_6_full/downloads
+  --pdf-dir downloads
 ```
 
 ### 4. Get Results
@@ -85,11 +85,28 @@ api:
 | `tiebreaker_grocery` | Distance to grocery | ✅ Broad search |
 | `tiebreaker_library` | Distance to library | ✅ Broad search |
 
+## Discovery Layer (How PDFs are found)
+
+Discovery is **not** using OpenClaw browser automation.
+
+It uses `discover.py`, a standard Python crawler based on `urllib` + HTML parsing:
+1. Starts from TDHCA seed page(s)
+2. Follows in-domain links up to `max_pages`
+3. Collects `.pdf` links matching the configured regex (default includes `2026`)
+4. Filters to target folder (default `2026-9-challenges`)
+
+So the stack is:
+- **Discovery:** local Python crawler
+- **Download:** local Python downloader with manifest/retry/parallel controls
+- **Extraction:** LLM + regex recovery
+
+No OpenClaw runtime is required for this.
+
 ## Without OpenClaw
 
 This pipeline works **standalone** — no OpenClaw runtime needed.
 
-**What OpenClaw provided:**
+**What OpenClaw provided (optional in original workflow):**
 - Session management
 - Built-in model routing
 - Message channel integration
@@ -150,14 +167,32 @@ python3 -m lihtc_tx_2026_agent.ops.run_complete_pipeline \
   --pdf-dir /path/to/specific/pdfs
 ```
 
+## Testing Results (current)
+
+Latest validated runs on the 2026 full-application set (`2026-9-challenges`, 114 PDFs):
+
+| Metric | Result |
+|---|---|
+| PDFs processed | 114 / 114 |
+| Fast extraction runtime (V5.8 path) | ~12.7 minutes |
+| Independent-source extraction runtime (A run) | ~19.3 minutes |
+| Application/contact extraction | 100% |
+| Census tract coverage | 100% (after recovery pass) |
+| Poverty rank coverage | 97.4% |
+| Tie-breaker amenity fields | 93.0% |
+
+Notes:
+- Independent-source run confirms the pipeline works from an isolated PDF directory.
+- Some value-level differences between runs are due to formatting/selection variance (e.g., quartile style `1` vs `1q`, or multiple candidate poverty values in a document).
+
 ## Data Quality
 
 - **census_tract:** 100% (auto-recovery via regex)
-- **poverty_rank:** ~97% (auto-recovery near quartile)
-- **tiebreaker_*:** ~93% (broad heading search)
-- **quartile:** ~79% (structured field)
+- **poverty_rank:** 97.4% (quartile-adjacent + multiline recovery)
+- **tiebreaker_*:** 93.0% (broad heading search)
+- **quartile:** ~79% directly, higher after normalization (`1` vs `1q`)
 
-Items flagged for review can be found in `review_queue.csv`.
+Items flagged for review can be found in `review_queue.csv`. Use it as the second-pass queue.
 
 ## License
 
