@@ -17,8 +17,8 @@ This agent automatically:
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/Doculy-AI/qc-agent.git
-cd qc-agent
+git clone https://github.com/kyroic/tx-lihtc-2026-agent.git
+cd tx-lihtc-2026-agent
 ```
 
 ### 2. Run setup
@@ -102,17 +102,50 @@ Find your extracted data in:
 
 ---
 
-## Performance (Tested Results)
+## Performance (5-Run Benchmark Results)
 
-Latest runs on 114 full application PDFs (`2026-9-challenges` folder):
+114 full application PDFs, 27 fields, single LLM pass (gpt-4o-mini):
 
-| Metric | Result |
-|--------|--------|
-| PDFs processed | 114 / 114 |
-| Runtime (extraction only) | ~13 minutes |
-| Runtime (full pipeline) | ~20 minutes |
-| Clean extractions (no review) | 89 / 114 (78%) |
-| Items needing review | 25 / 114 (22%) |
+| Category | Coverage | Variance |
+|---|---|---|
+| Standard fields (8) | 85.6% | ±0.3% across 5 runs |
+| Tiebreaker names (4) | 93.9% | ±0.1% across 5 runs |
+| Amenity coordinates (8) | 93.6% | ±0.1% across 5 runs |
+| Site/distances/score (7) | 93.8% | ±0.2% across 5 runs |
+| **Mean runtime** | **19.8 min** | 16.9–24.4 min |
+| **Errors** | **1 in 570 PDFs** | 0.2% error rate |
+
+After scanner fix (broad regex for tiebreaker pages):
+
+| Category | New Coverage |
+|---|---|
+| Tiebreaker names (4) | 99.1% |
+| Amenity coordinates (8) | 98.9% |
+| Site/distances/score (7) | 99.0% |
+
+### Pipeline Steps
+
+1. **Extract** — `extract_one_pdf_v5_8()` (single LLM call, all 27 fields)
+2. **Auto-recover** — regex scan for census_tract, poverty_rank, quartile, property_rate
+3. **Clean** — data cleanliness agent (phone normalization, coordinate validation, artifact detection)
+
+---
+
+## Data Cleanliness
+
+After extraction, run the cleanliness agent to normalize and validate:
+
+```bash
+python scripts/clean_csv.py --in out/aggregate/applications.csv --out out/clean/
+```
+
+Outputs:
+- `applications_cleaned.csv` — normalized data (all phones `(XXX) XXX-XXXX`, N/A stripped, unicode fixed)
+- `qa_report.csv` — per-row quality score + issues
+- `qa_summary.json` — aggregate stats
+
+10 validation rules: phone format, email validity, garbage name detection, numeric ranges,
+unicode minus fix, Texas coordinate bounds, distance sanity, LLM copy-paste detection, census tract format, duplicate names.
 
 ---
 
@@ -204,42 +237,37 @@ export OPENAI_API_KEY='sk-...'
 
 ---
 
-## Configuration (Optional)
-
-Copy the example config and customize:
-
-```bash
-cp config.yaml.example config.yaml
-```
-
-Edit `config.yaml` to change:
-- Default model
-- Parallel workers
-- Output formats
-- API provider
-
 ---
 
 ## Project Structure
 
 ```
-qc-agent/
+tx-lihtc-2026-agent/
 ├── setup.sh                    # One-time setup script
-├── run_pipeline.py            # Main entry point
-├── config.yaml.example        # Configuration template
-├── requirements.txt           # Python dependencies
-├── lihtc_tx_2026_agent/       # Core code
-│   ├── discover.py            # PDF discovery (web crawler)
-│   ├── download.py            # PDF downloader
-│   ├── extract.py             # Data extraction
-│   ├── model_client.py        # AI model interface
-│   ├── strategies/            # Extraction strategies
-│   └── ops/                   # Pipeline operations
-└── out/                       # Output folder (created on run)
-    └── aggregate/
-        ├── applications.csv
-        ├── applications.xlsx
-        └── review_queue.csv
+├── run_pipeline.py             # Main entry point
+├── requirements.txt            # Python dependencies
+├── scripts/
+│   ├── run_single.py           # Single-run benchmark
+│   ├── clean_csv.py            # Data cleanliness pass
+│   └── benchmark_5_runs.py     # 5-run comparison
+├── lihtc_tx_2026_agent/        # Core code
+│   ├── discover.py             # PDF discovery (web crawler)
+│   ├── download.py             # PDF downloader
+│   ├── extract.py              # Data extraction + data model
+│   ├── model_client.py         # AI model interface (OpenAI + Supabase proxy)
+│   ├── cleanliness.py          # Data validation & normalization
+│   ├── strategies/
+│   │   ├── registry.py         # Strategy registry
+│   │   ├── base.py             # ExtractStrategy protocol
+│   │   └── v5_8_fast_tiebreaker.py  # Active extraction strategy
+│   └── ops/                    # Pipeline operations
+│       ├── supabase.py         # Audit logging
+│       ├── run_complete_pipeline.py  # Full pipeline orchestrator
+│       └── classify_pdfs.py    # PDF classification
+└── archive/                    # Deprecated code (35 files, v1-v5.7)
+    ├── strategies/
+    ├── ops/
+    └── scripts/
 ```
 
 ---
