@@ -133,6 +133,100 @@ def find_tiebreaker_pages_fallback(pdf_path: Path) -> list[int]:
     return found
 
 
+def _parse_inline_coordinate_grid(text: str) -> dict[str, tuple[str, str]]:
+    """
+    Parse inline coordinate grids from pdftotext output where pdfplumber
+    can't detect tables. These appear as lines like:
+
+        32.646019   -96.945183     32.64286    -96.94602
+
+    where the 4 columns are: site_lat, site_lng, amenity_lat, amenity_lng.
+    Returns {amenity: (lat, lng)}.
+    """
+
+    # Match lines with 4 decimal-degree coordinate values.
+    # Tolerate pdfplumber/pdftotext noise characters (I, |) between columns.
+    # Coordinates may have unicode hyphens (U+2010, U+2011, U+2212).
+    coord_line = re.compile(
+        r'^\s*'  # 4 coordinate columns
+        r'([\-\u2010\u2011\u2212]?\d{1,3}\.\d+)\s+[I|\s]*'  # site_lat
+        r'([\-\u2010\u2011\u2212]?\d{1,3}\.\d+)\s+[I|\s]*'  # site_lng
+        r'([\-\u2010\u2011\u2212]?\d{1,3}\.\d+)\s+[I|\s]*'  # amenity_lat
+        r'([\-\u2010\u2011\u2212]?\d{1,3}\.\d+)',     # amenity_lng
+        re.MULTILINE,
+    )
+
+    coords_list: list[tuple[str, str]] = []
+    for m in coord_line.finditer(text):
+        alat = m.group(3).replace('\u2010', '-').replace('\u2011', '-').replace('\u2212', '-')
+        alng = m.group(4).replace('\u2010', '-').replace('\u2011', '-').replace('\u2212', '-')
+        coords_list.append((alat, alng))
+
+    result: dict[str, tuple[str, str]] = {}
+
+    # Try to match by amenity names found near the coordinate lines in the text.
+    # TDHCA format lists amenities in order: Park, School, Grocery, Library.
+    # We scan the text for amenity keywords and assign them positionally.
+    amenity_patterns = [
+        ("park", re.compile(r'(?i)\bpark\b')),
+        ("school", re.compile(r'(?i)\bschool\b')),
+        ("grocery", re.compile(r'(?i)\bgrocery|super\s*market|walmart|heb|kroger|albertsons')),
+        ("library", re.compile(r'(?i)\blibrar')),
+    ]
+
+    # Build a map of which amenity types appear in the text
+    amenity_found: list[str] = []
+    for amenity, pat in amenity_patterns:
+        if pat.search(text):
+            amenity_found.append(amenity)
+
+    # Also check context lines around each coordinate line for amenity names
+    lines = text.split('\n')
+    coord_line_indices: list[tuple[int, tuple[str, str]]] = []
+    for i, line in enumerate(lines):
+        m = coord_line.match(line)
+        if m:
+            alat = m.group(3).replace('\u2010', '-').replace('\u2011', '-').replace('\u2212', '-')
+            alng = m.group(4).replace('\u2010', '-').replace('\u2011', '-').replace('\u2212', '-')
+            coord_line_indices.append((i, (alat, alng)))
+
+    if coord_line_indices:
+        for ci, (line_idx, (alat, alng)) in enumerate(coord_line_indices):
+            # Look at surrounding 3 lines for amenity name
+            context_start = max(0, line_idx - 3)
+            context_end = min(len(lines), line_idx + 4)
+            context = ' '.join(lines[context_start:context_end])
+            for amenity, pat in amenity_patterns:
+                if pat.search(context):
+                    result[amenity] = (alat, alng)
+                    break
+
+    # Fallback: positional assignment for rows we couldn't match contextually
+    unmatched_indices = []
+    unmatched_coords = []
+    for ci, (line_idx, coords) in enumerate(coord_line_indices):
+        # Check if this line's coords were already matched
+        already = False
+        for a, v in result.items():
+            if v == coords:
+                already = True
+                break
+        if not already:
+            unmatched_indices.append(line_idx)
+            unmatched_coords.append(coords)
+
+    if unmatched_coords:
+        # Match remaining by TDHCA positional order, skipping already-matched amenities
+        # TDHCA order: Park, School, Grocery, Library
+        tdhca_order = ["park", "school", "grocery", "library"]
+        remaining_amenities = [a for a in tdhca_order if a not in result]
+        for i, coords in enumerate(unmatched_coords):
+            if i < len(remaining_amenities):
+                result[remaining_amenities[i]] = coords
+
+    return result
+
+
 def _build_coordinate_summary(tables: list, full_text: str) -> str:
     """
     Reconstruct a human-readable coordinate table from pdfplumber's
@@ -149,11 +243,11 @@ def _build_coordinate_summary(tables: list, full_text: str) -> str:
     for t in tables:
         if not t or not t[0]:
             continue
-        # A 2-col table where values look like coords
+        # A 2-col table where values look like coords (strip trailing artifacts)
         is_coords = (
             len(t[0]) == 2
             and all(
-                re.match(r'^-?\d{1,3}\.\d+$', str(c or ''))
+                re.match(r'^-?\d{1,3}\.\d+$', re.sub(r'[\n|].*$', '', str(c or '')))
                 for row in t if row
                 for c in row if c is not None
             )
@@ -179,17 +273,18 @@ def _build_coordinate_summary(tables: list, full_text: str) -> str:
     if len(amenity_labels) < 4:
         amenity_labels = ["Park", "School", "Grocery", "Library"]
 
-    # Build summary: pair coord tables (amenity, site) for each amenity
+    # Build summary: pair coord tables (site, amenity) for each amenity.
+    # pdfplumber: site boundary pair comes first, amenity pair second.
     lines: list[str] = []
     for i, label in enumerate(amenity_labels):
-        a_idx = i * 2
-        s_idx = i * 2 + 1
-        a_str = ""
+        s_idx = i * 2      # site boundary coords
+        a_idx = i * 2 + 1  # amenity coords
         s_str = ""
-        if a_idx < len(coord_tables) and coord_tables[a_idx] and coord_tables[a_idx][0]:
-            a_str = ", ".join(str(c or "") for c in coord_tables[a_idx][0])
+        a_str = ""
         if s_idx < len(coord_tables) and coord_tables[s_idx] and coord_tables[s_idx][0]:
-            s_str = ", ".join(str(c or "") for c in coord_tables[s_idx][0])
+            s_str = ", ".join(re.sub(r'[\n|].*$', '', str(c or "")) for c in coord_tables[s_idx][0])
+        if a_idx < len(coord_tables) and coord_tables[a_idx] and coord_tables[a_idx][0]:
+            a_str = ", ".join(re.sub(r'[\n|].*$', '', str(c or "")) for c in coord_tables[a_idx][0])
         lines.append(
             f"  {label}: amenity_lat,amenity_lng = ({a_str}) | "
             f"site_lat,site_lng = ({s_str})"
@@ -540,7 +635,7 @@ def extract_one_pdf_v5_8(
         "- standard_pages: Extract application_name, contact_name/email/phone, census_tract, quartile (digit only), poverty_rank, property_rate from labels in the text.\n"
         "- tiebreaker_pages_extracted + combined_coordinate_summary + combined_distance_summary: Extract ALL tiebreaker, coordinate, distance, and score fields.\n"
         "  Use the pre-parsed COORDINATE TABLE and DISTANCE TABLE blocks FIRST — they are already restructured for you. Fall back to raw text/tables only if needed.\n"
-        "  Coordinates: decimal degrees, copy EXACTLY from pre-parsed tables. For site_lat/site_lng, use the Park row's site values (first amenity row).\n"
+        "  Coordinates: decimal degrees, copy EXACTLY from COORDINATE TABLE. Each amenity has its own amenity_lat,amenity_lng — use those, NOT site_lat,site_lng. For site_lat/site_lng, use the Park row's site values (first amenity row).\n"
         "  Distances: whole feet, number only.\n"
         "  tiebreaker_score: the Tie-Breaker: total from DISTANCE TABLE, digits only.\n"
     ) + coaching_append_from_env()

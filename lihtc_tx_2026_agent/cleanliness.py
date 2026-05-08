@@ -288,11 +288,19 @@ def find_duplicates(rows: list[dict[str, str]], key: str = "application_name") -
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 9. ZERO-DISTANCE = SAME COORDS DETECTION (LLM copy-paste)
+# 9. ZERO-DISTANCE = SAME COORDS DETECTION
 # ═══════════════════════════════════════════════════════════════════
 
 def zero_distance_coords_check(row: dict[str, str]) -> list[str]:
-    """Flag when amenity coords identical to site coords (likely LLM copy)."""
+    """
+    Check when amenity coords identical to site coords.
+
+    IMPORTANT: The TDHCA PDFs themselves often list amenity coords as identical
+    to site coords when distance is 0ft (same parcel boundary). This is NOT an
+    LLM hallucination — the LLM is faithfully extracting what's in the PDF.
+    We flag these as "needs_geocode" rather than "copy_paste" since the source
+    data itself needs enrichment with a real geocoder.
+    """
     issues: list[str] = []
     site_lat = (row.get("site_lat") or "").strip()
     site_lng = (row.get("site_lng") or "").strip()
@@ -302,8 +310,20 @@ def zero_distance_coords_check(row: dict[str, str]) -> list[str]:
     for amenity in ["park", "school", "grocery", "library"]:
         alat = (row.get(f"{amenity}_lat") or "").strip()
         alng = (row.get(f"{amenity}_lng") or "").strip()
+        if not alat or not alng:
+            continue
         if alat == site_lat and alng == site_lng:
-            issues.append(f"coords_copy_paste:{amenity}")
+            dist = (row.get(f"distance_to_{amenity}") or "").strip()
+            try:
+                dist_ft = float(dist)
+            except (ValueError, TypeError):
+                dist_ft = -1
+            if dist_ft == 0:
+                # PDF source data says 0ft — same parcel boundary, not LLM error
+                issues.append(f"needs_geocode:{amenity}")
+            else:
+                # Distance > 0 but coords identical — likely LLM copy-paste
+                issues.append(f"coords_copy_paste:{amenity}")
     return issues
 
 
@@ -389,8 +409,12 @@ def scan_row(row: dict[str, str]) -> dict[str, Any]:
             severity_deductions += 0.15
         elif "_garbage" in iss or "_non_numeric" in iss or "_out_of_bounds" in iss or "_malformed" in iss:
             severity_deductions += 0.10
-        elif "_copy_paste" in iss or "_zero" in iss or "_negative" in iss:
-            severity_deductions += 0.08
+        elif "_copy_paste" in iss or "_negative" in iss:
+            severity_deductions += 0.10  # LLM error
+        elif "_zero" in iss:
+            severity_deductions += 0.05  # Could be correct (0ft) but needs verification
+        elif "needs_geocode" in iss:
+            severity_deductions += 0.03  # PDF source data limitation, not extraction error
         else:
             severity_deductions += 0.03  # warnings (reformatting, unicode fixes)
 

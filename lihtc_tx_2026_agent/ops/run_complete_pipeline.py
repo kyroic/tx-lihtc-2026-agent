@@ -275,6 +275,18 @@ def main() -> int:
         model=args.model,
         max_pages=50,
     )
+
+    # Step 5: Cleanliness pass
+    print(f"\n🧹 Step 5: Running cleanliness pass...")
+    from ..cleanliness import clean_csv
+    raw_csv = aggregate_dir / "applications.csv"
+    clean_dir = out_root / "cleaned"
+    clean_dir.mkdir(parents=True, exist_ok=True)
+    clean_result = clean_csv(raw_csv, clean_dir)
+    print(f"  Mean quality: {clean_result['mean_quality_score']:.2f}")
+    print(f"  Perfect rows: {clean_result['rows_perfect']}")
+    top_issues = list(clean_result.get('issue_frequency', {}).items())[:3]
+    print(f"  Top issues: {top_issues}")
     
     run_summary = {
         "mode": "complete_end_to_end_pipeline",
@@ -286,6 +298,11 @@ def main() -> int:
         "clean_rows": len(extracted_rows) - summary["count_needs_review"],
         "elapsed_total_s": round(elapsed, 2),
         "outputs": summary["outputs"],
+        "cleanliness": {
+            "mean_quality": clean_result["mean_quality_score"],
+            "perfect_rows": clean_result["rows_perfect"],
+            "cleaned_csv": str(clean_dir / "applications_cleaned.csv"),
+        },
     }
     
     (out_root / "run_summary.json").write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
@@ -294,7 +311,7 @@ def main() -> int:
     print("=" * 60)
     print("COMPLETE PIPELINE FINISHED")
     print("=" * 60)
-    print(json.dumps(run_summary, indent=2))
+    print(json.dumps(run_summary, indent=2, default=str))
     
     return 0
 
