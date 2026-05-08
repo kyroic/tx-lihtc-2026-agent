@@ -101,17 +101,16 @@ def chat_completions(
     }
     headers: dict[str, str] = {"Content-Type": "application/json"}
 
-    # Standalone direct OpenAI requires Authorization. Proxies may ignore it.
-    api_key = openai_api_key()
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    # Auth: Supabase proxy > direct OpenAI, based on the base URL.
+    if "supabase.co/functions" in base:
+        sb = supabase_service_key()
+        if sb:
+            headers["apikey"] = sb
+            headers["Authorization"] = f"Bearer {sb}"
     else:
-        # If we're pointing at a Supabase Edge Function gateway, prefer the service key.
-        if "supabase.co/functions" in base:
-            sb = supabase_service_key()
-            if sb:
-                headers["apikey"] = sb
-                headers["Authorization"] = f"Bearer {sb}"
+        api_key = openai_api_key()
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
     # Optional metadata headers; some gateways use these for routing/logging.
     if project_id:
