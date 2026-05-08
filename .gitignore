@@ -18,11 +18,17 @@ venv/
 
 # Local runtime data / outputs
 out*/
+out_*/
 downloads*/
 independent_*/
-memory/
-logs/
+test_pdfs/
+test_outputs/
+delivery_outputs/
+fixtures/
+dashboard/
+state/
 *.log
+*.jsonl
 
 # Workspace-local assistant files
 AGENTS.md
@@ -33,7 +39,7 @@ SOUL.md
 TOOLS.md
 USER.md
 
-# Large output files (keep local)
-test_pdfs/
-delivery_outputs/
-test_outputs/
+# Nested agent workspace (do not commit)
+main/
+.pii/
+DELIVERY_EMAIL_TO_*
