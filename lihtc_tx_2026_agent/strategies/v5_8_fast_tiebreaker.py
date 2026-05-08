@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -40,23 +41,15 @@ def find_tiebreaker_pages_fast(pdf_path: Path) -> list[int]:
         "Tie-Breaker Information",
         "Tie Breaker Information",
     ]
+    # Broader fallback patterns for non-standard headers (e.g. "Tie-Breakers")
+    broad_patterns = [
+        r'Tie[- ]?Breakers?',
+    ]
+
+    found = []
 
     try:
-        # pdftotext with layout + page markers
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        subprocess.run(
-            ["pdftotext", "-layout", "-nopgbrk", str(pdf_path), tmp_path],
-            capture_output=True,
-            timeout=60,
-        )
-
-        text = Path(tmp_path).read_text(errors="ignore")
-        Path(tmp_path).unlink(missing_ok=True)
-
-        # pdftotext doesn't add page markers by default, so we need another approach
-        # Let's try with page breaks
+        # Single pdftotext pass with form feeds for page splitting
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
             tmp_path = tmp.name
 
@@ -71,12 +64,44 @@ def find_tiebreaker_pages_fast(pdf_path: Path) -> list[int]:
 
         # Split by page markers (form feed)
         pages = text.split("\f")
-        found = []
         for i, page_text in enumerate(pages, 1):
+            # First try exact titles (most reliable)
             if any(title in page_text for title in exact_titles):
                 found.append(i)
-                if len(found) >= 10:  # Cap
-                    break
+            # Then try broad regex patterns for non-standard headers
+            elif any(re.search(p, page_text) for p in broad_patterns):
+                found.append(i)
+            if len(found) >= 15:  # Cap slightly higher for broad patterns
+                break
+
+        if found:
+            return found
+
+        # If page-splitting found nothing, try the first-pass approach
+        # (some PDFs don't have reliable form feeds)
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        subprocess.run(
+            ["pdftotext", "-layout", "-nopgbrk", str(pdf_path), tmp_path],
+            capture_output=True,
+            timeout=60,
+        )
+
+        raw_text = Path(tmp_path).read_text(errors="ignore")
+        Path(tmp_path).unlink(missing_ok=True)
+
+        # Line-based scanning: find tiebreaker lines and estimate page
+        lines = raw_text.split("\n")
+        for lineno, line in enumerate(lines):
+            if any(title in line for title in exact_titles) or \
+               any(re.search(p, line) for p in broad_patterns):
+                # Rough page estimate: assume ~60 lines per page
+                page_est = max(1, lineno // 60)
+                if page_est not in found:
+                    found.append(page_est)
+            if len(found) >= 15:
+                break
 
         return found
 
