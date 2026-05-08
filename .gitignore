@@ -32,3 +32,8 @@ IDENTITY.md
 SOUL.md
 TOOLS.md
 USER.md
+
+# Large output files (keep local)
+test_pdfs/
+delivery_outputs/
+test_outputs/
