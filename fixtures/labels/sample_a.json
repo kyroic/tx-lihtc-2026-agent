@@ -1,0 +1,14 @@
+{
+  "application_name": "Sample Gardens Phase II",
+  "contact_name": "Jane Doe",
+  "contact_email": "jane.doe@example.org",
+  "contact_phone": "(512) 555-0199",
+  "tiebreaker_park": "0.5 miles",
+  "tiebreaker_school": "1.1 miles",
+  "tiebreaker_grocery": "0.8 miles",
+  "tiebreaker_library": "1.4 miles",
+  "quartile": "Q2",
+  "property_rate": "8.25%",
+  "poverty_rank": "12",
+  "census_tract": "1234.56"
+}

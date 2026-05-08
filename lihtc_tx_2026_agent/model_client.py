@@ -29,18 +29,11 @@ def _dotenv_get(path: Path, key: str) -> str:
 
 def openai_base_url() -> str:
     """
-    Returns an OpenAI-compatible base URL.
-
-    Expected setups:
-    - Local OpenAI-compatible gateway: OPENAI_BASE_URL=http://127.0.0.1:11435
-    - Cloud OpenAI-compatible gateway: OPENAI_BASE_URL=https://.../gateway
+    Returns an OpenAI-compatible base URL from OPENAI_BASE_URL env var only.
+    Does NOT fall back to dotenv — use env vars explicitly for the base URL.
     """
     base = (os.environ.get("OPENAI_BASE_URL") or "").strip()
-    if base:
-        return base.rstrip("/")
-    # Optional convenience: read from ~/.openclaw/.env if present.
-    base = _dotenv_get(Path.home() / ".openclaw" / ".env", "OPENAI_BASE_URL")
-    return (base or "").rstrip("/")
+    return base.rstrip("/")
 
 def openai_api_key() -> str:
     # Standalone mode uses OPENAI_API_KEY directly (normal OpenAI API).

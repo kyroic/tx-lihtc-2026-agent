@@ -1,0 +1,14 @@
+{
+  "application_name": "Oak Creek Homes",
+  "contact_name": "John Smith",
+  "contact_email": "john.smith@example.org",
+  "contact_phone": "512-555-0111",
+  "tiebreaker_park": "0.2 mi",
+  "tiebreaker_school": "0.9 mi",
+  "tiebreaker_grocery": "0.4 mi",
+  "tiebreaker_library": "1.0 mi",
+  "quartile": "Q1",
+  "property_rate": "7.50%",
+  "poverty_rank": "3",
+  "census_tract": "9876.54"
+}
