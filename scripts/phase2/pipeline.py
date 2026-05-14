@@ -330,22 +330,35 @@ def status_fill(status):
     return GRAY
 
 
+PHASE2_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _run_phase2_builder(script_name):
+    """Run a phase-2 builder script by absolute path, keeping caller cwd/data paths."""
+    script_path = os.path.join(PHASE2_DIR, script_name)
+    runpy.run_path(script_path, run_name='__main__')
+
+
 def build_validation_workbook(merged, stats, output_path):
     """Build pipeline 14-tab Parcell workbook via refactored 13-tab+Coordinates builder."""
+    output_abs = os.path.abspath(output_path)
     generated = 'Parcell_Validation_Workbook_pipeline.xlsx'
-    runpy.run_path('_build_pipeline_13tab.py', run_name='__main__')
-    if output_path != generated:
-        shutil.copyfile(generated, output_path)
-    return output_path
+    _run_phase2_builder('_build_pipeline_13tab.py')
+    generated_abs = os.path.abspath(generated)
+    if output_abs != generated_abs:
+        shutil.copyfile(generated_abs, output_abs)
+    return output_abs
 
 
 def build_match_workbook(merged, output_path):
     """Build pipeline multi-tab Match workbook via refactored per-field tab builder."""
+    output_abs = os.path.abspath(output_path)
     generated = 'Match_Validation_Workbook_pipeline.xlsx'
-    runpy.run_path('_build_match_multi.py', run_name='__main__')
-    if output_path != generated:
-        shutil.copyfile(generated, output_path)
-    return output_path
+    _run_phase2_builder('_build_match_multi.py')
+    generated_abs = os.path.abspath(generated)
+    if output_abs != generated_abs:
+        shutil.copyfile(generated_abs, output_abs)
+    return output_abs
 
 
 # ═══════════════════════════════════════════════════════════════════
